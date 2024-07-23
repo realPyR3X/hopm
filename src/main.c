@@ -30,6 +30,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <err.h>
 
 #include "config.h"
 #include "irc.h"
@@ -100,6 +101,14 @@ main(int argc, char *argv[])
   FILE *pidout;
   struct rlimit rlim;
 
+  if (pledge("stdio rpath wpath cpath inet dns proc exec unveil", NULL) == -1) {
+    err(1, "pledge");
+  }
+
+  if (unveil("/", "")) {
+    err(1, "unveil");
+  }
+
   setup_corelimit();
 
   while (1)
@@ -129,6 +138,10 @@ main(int argc, char *argv[])
 
   snprintf(CONFFILE, lenc, "%s/%s.%s", CONFDIR, CONFNAME, CONFEXT);
   snprintf(LOGFILE, lenl, "%s/%s.%s", LOGDIR, CONFNAME, LOGEXT);
+
+  if (unveil(HOPM_PREFIX, "r") == -1) {
+    err(1, "unveil");
+  }
 
   if (chdir(HOPM_PREFIX))
   {
@@ -172,6 +185,10 @@ main(int argc, char *argv[])
     if (fd > STDERR_FILENO)
       close(fd);
 
+    if (unveil(LOGFILE, "wc") == -1) {
+      err(1, "unveil");
+    }
+
     log_open(LOGFILE);
   }
   else
@@ -180,12 +197,33 @@ main(int argc, char *argv[])
   log_printf("MAIN -> HOPM %s started.", VERSION);
   log_printf("MAIN -> Reading configuration file...");
 
+  if (unveil(CONFFILE, "r") == -1) {
+    err(1, "unveil");
+  }
+
   config_load(CONFFILE);
 
-  if (OptionsItem.scanlog)
+  if (OptionsItem.scanlog) {
+    if (unveil(OptionsItem.scanlog, "wc")) {
+      err(1, "unveil");
+    }
+
     scanlog_open(OptionsItem.scanlog);
+  }
+
+  if (unveil(OptionsItem.pidfile, "wc")) {
+    err(1, "unveil");
+  }
 
   pidout = fopen(OptionsItem.pidfile, "w");
+
+  if (unveil(HOPM_BINPATH, "x") == -1) {
+    err(1, "unveil");
+  }
+
+  if (pledge("stdio inet dns exec", NULL) == -1) {
+    err(1, "pledge");
+  }
 
   if (pidout)
   {
